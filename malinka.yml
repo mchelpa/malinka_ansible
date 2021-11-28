@@ -1,0 +1,85 @@
+---
+- hosts: malinka
+  name: Check if ansible is working.
+  become: yes
+  remote_user: pi
+  vars:
+    ansible_python_interpreter: /usr/bin/python3
+  tasks:
+    - debug: msg="Ansible running in {{ansible_lsb.id}}"
+
+# Neovim setup
+    - name: Check if neovim is installed.
+      command: which neovim
+      failed_when: false
+      changed_when: false
+      check_mode: no
+      register: neovim_not_installed
+
+    - name: Install neovim.
+      apt:
+        name: neovim
+      when: neovim_not_installed.rc == 1
+
+# Install pip3
+    - name: Check if pip is installed.
+      command: which pip
+      failed_when: false
+      changed_when: false
+      check_mode: no
+      register: pip_not_installed
+
+    - name: Install pip.
+      apt:
+        name: python3-pip
+      when: pip_not_installed.rc == 1
+
+# Docker setup
+    - name: Check if docker is installed.
+      command: which docker
+      failed_when: false
+      changed_when: false
+      check_mode: no
+      register: docker_not_installed
+
+    - name: Download docker setup script.
+      get_url:
+        url: https://get.docker.com/
+        dest: /tmp/get-docker.sh
+        mode: 0775
+      when: docker_not_installed.rc == 1
+
+    - name: Run Docker install convenience script.
+      command: /tmp/get-docker.sh
+      environment:
+        CHANNEL: stable
+      when: docker_not_installed.rc == 1
+
+    - name: Ensure Docker is started.
+      service:
+        name: docker
+        state: started
+        enabled: true
+
+    - name: Install docker-py for further usage of docker_container module
+      pip:
+        name: docker
+        
+# PiHole setup
+    - name: Start pihole docker container
+      docker_container:
+        restart: yes
+        restart_policy: always
+        name: pihole
+        image: pihole/pihole:latest
+        pull: yes
+        volumes:
+          - './etc-pihole/:/etc/pihole/'
+          - './etc-dnsmasq.d/:/etc/dnsmasq.d/'
+        ports:
+          - '53:53/tcp'
+          - '53:53/udp'
+          - '67:67/udp'
+          - '80:80/tcp'
+        env:
+          TZ='Europe/Warsaw'
